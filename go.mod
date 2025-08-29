@@ -42,7 +42,7 @@ require (
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/maxminddb-golang v1.12.0 // lastest version compatible with golang1.20
 	github.com/sagernet/cors v1.2.1
-	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a
+	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a // indirect
 	github.com/samber/lo v1.51.0
 	github.com/shirou/gopsutil/v4 v4.25.1 // lastest version compatible with golang1.20
 	github.com/sirupsen/logrus v1.9.3
