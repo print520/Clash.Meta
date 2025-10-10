@@ -14,6 +14,7 @@ import (
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
+	"github.com/metacubex/mihomo/common/convert"
 	"github.com/metacubex/mihomo/component/auth"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
@@ -57,6 +58,10 @@ func readConfig(path string) ([]byte, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("configuration file %s is empty", path)
 	}
+
+	// 智能解密：尝试AES+Base64双重解密，如果失败则尝试Base64解密，最后返回原始数据
+	// 这样可以支持AES加密、Base64编码和普通配置文件
+	data = convert.DecodeConfig(data)
 
 	return data, err
 }
