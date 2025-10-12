@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -26,64 +28,69 @@ func DecodeBase64(buf []byte) []byte {
 // 2. Base64 only (for base64 encoded configs)  
 // 3. Plaintext (for normal configs)
 func DecodeConfig(buf []byte) []byte {
+	// 先移除可能的BOM（特别是Windows系统）
+	buf = removeBOM(buf)
+	
 	// 首先尝试AES+Base64双重解密
-	if aesResult := DecodeAESBase64(buf); len(aesResult) != len(buf) {
-		// 如果AES解密成功（长度改变），验证解密结果是否为有效YAML
+	aesResult := DecodeAESBase64(buf)
+	if len(aesResult) != len(buf) && len(aesResult) > 0 {
+		// AES解密成功且有数据，尝试验证
 		if isValidYAML(aesResult) {
 			return aesResult
 		}
 	}
 	
 	// 如果AES解密失败，尝试纯Base64解密
-	if base64Result := DecodeBase64(buf); len(base64Result) != len(buf) {
-		// 如果Base64解密成功，验证解密结果是否为有效YAML
+	base64Result := DecodeBase64(buf)
+	if len(base64Result) != len(buf) && len(base64Result) > 0 {
+		// Base64解密成功且有数据，尝试验证
 		if isValidYAML(base64Result) {
 			return base64Result
 		}
 	}
 	
-	// 如果都失败，返回原始数据
+	// 如果都失败，返回原始数据（可能本身就是明文）
 	return buf
 }
 
-// 简单的YAML有效性检查
+// YAML有效性检查 - 使用实际的YAML解析验证
 func isValidYAML(data []byte) bool {
-	// 检查是否包含YAML特征
-	str := string(data)
-	if len(str) == 0 {
+	if len(data) == 0 {
 		return false
 	}
 	
-	// 检查常见的YAML关键字
-	if containsAny(str, []string{"proxies:", "proxy-groups:", "rules:", "port:", "mixed-port:"}) {
+	// 移除可能的BOM标记
+	data = removeBOM(data)
+	
+	// 直接尝试解析YAML，这是最可靠的方法
+	var test interface{}
+	err := yaml.Unmarshal(data, &test)
+	if err == nil && test != nil {
+		// 成功解析且不为空，就认为是有效的YAML
 		return true
 	}
 	
-	// 检查是否为有效的JSON（也可能是YAML格式的配置）
-	if len(str) > 1 && str[0] == '{' && str[len(str)-1] == '}' {
-		return true
-	}
-	
-	// 检查是否包含代理配置特征
-	if containsAny(str, []string{"server:", "port:", "type:", "name:"}) {
-		return true
-	}
-	
-	return false
+	// 如果YAML解析失败，作为后备，检查是否至少看起来像配置文件
+	str := string(data)
+	// 检查是否包含配置文件的基本特征（冒号键值对格式）
+	return strings.Contains(str, ":") && (strings.Contains(str, "\n") || len(str) > 50)
 }
 
-// 检查字符串是否包含任意一个子字符串
-func containsAny(s string, substrs []string) bool {
-	for _, substr := range substrs {
-		if len(s) >= len(substr) {
-			for i := 0; i <= len(s)-len(substr); i++ {
-				if s[i:i+len(substr)] == substr {
-					return true
-				}
-			}
-		}
+// 移除BOM (Byte Order Mark) - 特别是Windows系统可能添加的BOM
+func removeBOM(data []byte) []byte {
+	// UTF-8 BOM: EF BB BF
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		return data[3:]
 	}
-	return false
+	// UTF-16 LE BOM: FF FE
+	if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE {
+		return data[2:]
+	}
+	// UTF-16 BE BOM: FE FF
+	if len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF {
+		return data[2:]
+	}
+	return data
 }
 
 func tryDecodeBase64(buf []byte) ([]byte, error) {

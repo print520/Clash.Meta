@@ -26,20 +26,28 @@ func DecodeAESBase64(buf []byte) []byte {
 		if hexDecoded, hexErr := hex.DecodeString(string(buf)); hexErr == nil {
 			base64Decoded = hexDecoded
 		} else {
-			// 都失败，直接返回原始数据
-			return DecodeBase64(buf)
+			// 都失败，尝试直接用原始数据（可能本身就是二进制加密数据）
+			base64Decoded = buf
 		}
 	}
 	
 	// 第二步：尝试AES解密
 	aesDecrypted, err := aesDecryptCBC(base64Decoded, aesKey, aesIv)
 	if err != nil {
-		// 如果AES解密失败，直接返回base64解密结果
-		return DecodeBase64(buf)
+		// 如果AES解密失败，返回原始数据（不是DecodeBase64的结果）
+		// 这样可以让外层DecodeConfig继续尝试其他方法
+		return buf
 	}
 	
 	// 第三步：AES解密成功后，再进行base64解密得到最终的YAML内容
-	return DecodeBase64(aesDecrypted)
+	finalResult := DecodeBase64(aesDecrypted)
+	
+	// 如果最终结果为空或太小，返回AES解密的直接结果
+	if len(finalResult) < 10 {
+		return aesDecrypted
+	}
+	
+	return finalResult
 }
 
 // AES-128-CBC 解密实现
