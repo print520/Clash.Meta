@@ -11,19 +11,23 @@ const base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456
 const obfuscatedChars = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210/+"
 
 // 构建混淆映射表
+// 优化：使用数组代替 Map，直接索引访问，避免 Map 查找开销
+// 使用 [256]byte 数组，可以直接用 byte 值作为索引（ASCII 字符范围 0-127）
 var obfuscateMap = buildObfuscateMap()
 var deobfuscateMap = buildDeobfuscateMap()
 
-func buildObfuscateMap() map[byte]byte {
-	m := make(map[byte]byte, len(base64Chars))
+func buildObfuscateMap() [256]byte {
+	var m [256]byte
+	// 初始化：未映射的字符保持为 0，表示不进行替换
 	for i := 0; i < len(base64Chars); i++ {
 		m[base64Chars[i]] = obfuscatedChars[i]
 	}
 	return m
 }
 
-func buildDeobfuscateMap() map[byte]byte {
-	m := make(map[byte]byte, len(obfuscatedChars))
+func buildDeobfuscateMap() [256]byte {
+	var m [256]byte
+	// 初始化：未映射的字符保持为 0，表示不进行替换
 	for i := 0; i < len(obfuscatedChars); i++ {
 		m[obfuscatedChars[i]] = base64Chars[i]
 	}
@@ -31,30 +35,32 @@ func buildDeobfuscateMap() map[byte]byte {
 }
 
 // 混淆 Base64 字符串
+// 优化：预分配固定大小的 slice，直接索引赋值，避免 append 开销
 func obfuscateBase64(s string) string {
-	result := make([]byte, 0, len(s))
+	result := make([]byte, len(s))
 	for i := 0; i < len(s); i++ {
 		char := s[i]
 		// 如果是 Base64 字符，进行替换；否则保持原样（如填充字符 =）
-		if obfuscated, ok := obfuscateMap[char]; ok {
-			result = append(result, obfuscated)
+		if obfuscated := obfuscateMap[char]; obfuscated != 0 {
+			result[i] = obfuscated
 		} else {
-			result = append(result, char)
+			result[i] = char
 		}
 	}
 	return string(result)
 }
 
 // 去混淆 Base64 字符串
+// 优化：预分配固定大小的 slice，直接索引赋值，避免 append 开销
 func deobfuscateBase64(s string) string {
-	result := make([]byte, 0, len(s))
+	result := make([]byte, len(s))
 	for i := 0; i < len(s); i++ {
 		char := s[i]
 		// 如果是混淆字符，进行反向替换；否则保持原样（如填充字符 =）
-		if original, ok := deobfuscateMap[char]; ok {
-			result = append(result, original)
+		if original := deobfuscateMap[char]; original != 0 {
+			result[i] = original
 		} else {
-			result = append(result, char)
+			result[i] = char
 		}
 	}
 	return string(result)
@@ -81,8 +87,8 @@ func isLikelyObfuscated(data []byte) bool {
 		// 检查是否在混淆字符集中（主要是大写字母Z-A和小写字母z-a）
 		if (char >= 'Z' && char <= 'A') || (char >= 'z' && char <= 'a') ||
 			(char >= '9' && char <= '0') || char == '/' {
-			// 检查是否在混淆字符集范围内
-			if _, ok := deobfuscateMap[char]; ok {
+			// 检查是否在混淆字符集范围内（使用数组直接索引，比 Map 查找更快）
+			if deobfuscateMap[char] != 0 {
 				obfuscatedCount++
 			}
 		}
