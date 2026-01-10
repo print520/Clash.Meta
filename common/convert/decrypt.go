@@ -23,10 +23,18 @@ func DecryptConfig(buf []byte) []byte {
 		return aesResult
 	}
 
-	// 尝试方式2: 纯Base64解码
+	// 尝试方式2: 纯Base64解码（旧格式，优先尝试以保持向后兼容）
 	base64Result := DecodeBase64(buf)
 	if isValidConfig(base64Result) && !bytes.Equal(base64Result, buf) {
 		return base64Result
+	}
+
+	// 尝试方式3: 混淆的 Base64 解码（新格式）
+	// 注意：如果普通 Base64 解码成功，就不会尝试这个
+	// 这样可以确保旧格式的配置文件优先被正确识别
+	obfuscatedResult := DecodeObfuscatedBase64(buf)
+	if isValidConfig(obfuscatedResult) && !bytes.Equal(obfuscatedResult, buf) {
+		return obfuscatedResult
 	}
 
 	// 如果都失败，返回原始数据
