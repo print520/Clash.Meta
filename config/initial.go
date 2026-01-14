@@ -32,7 +32,7 @@ func Init(dir string) error {
 		if err != nil {
 			return fmt.Errorf("can't create file %s: %s", configPath, err.Error())
 		}
-		f.Write([]byte(`mixed-port: 7890`))
+		f.Write([]byte(`mixed-port: 7892`))
 		f.Close()
 	}
 
