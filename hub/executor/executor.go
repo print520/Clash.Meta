@@ -14,6 +14,7 @@ import (
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
+	"github.com/metacubex/mihomo/common/convert"
 	"github.com/metacubex/mihomo/component/auth"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
@@ -58,7 +59,12 @@ func readConfig(path string) ([]byte, error) {
 		return nil, fmt.Errorf("configuration file %s is empty", path)
 	}
 
-	return data, err
+	// 自动解密配置文件
+	// 如果文件是加密的（Base64或其他格式），DecryptConfig会自动解密
+	// 如果文件未加密，DecryptConfig会原样返回
+	decrypted := convert.DecryptConfig(data)
+
+	return decrypted, nil
 }
 
 // Parse config with default config path
