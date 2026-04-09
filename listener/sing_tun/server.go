@@ -153,6 +153,16 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		tunName = CalculateInterfaceName(InterfaceName)
 		options.Device = tunName
 	}
+	forwarderBindInterface := false
+	if options.FileDescriptor > 0 {
+		if tunnelName, err := getTunnelName(int32(options.FileDescriptor)); err == nil {
+			tunName = tunnelName // sing-tun must have the truth tun interface name even it from a fd
+			forwarderBindInterface = true
+			log.Debugln("[TUN] use tun name %s for fd %d", tunnelName, options.FileDescriptor)
+		} else {
+			log.Warnln("[TUN] get tun name failed for fd %d, fallback to use tun interface name %s", options.FileDescriptor, tunName)
+		}
+	}
 	routeAddress := options.RouteAddress
 	if len(options.Inet4RouteAddress) > 0 {
 		routeAddress = append(routeAddress, options.Inet4RouteAddress...)
@@ -197,6 +207,10 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 	if ruleIndex == 0 {
 		ruleIndex = tun.DefaultIPRoute2RuleIndex
 	}
+	autoRedirectFallbackRuleIndex := options.AutoRedirectIPRoute2FallbackRuleIndex
+	if autoRedirectFallbackRuleIndex == 0 {
+		autoRedirectFallbackRuleIndex = tun.DefaultIPRoute2AutoRedirectFallbackRuleIndex
+	}
 	inputMark := options.AutoRedirectInputMark
 	if inputMark == 0 {
 		inputMark = tun.DefaultAutoRedirectInputMark
@@ -236,6 +250,22 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		if err != nil {
 			return nil, E.Cause(err, "parse exclude_dst_port_range")
 		}
+	}
+	var includeMACAddress []net.HardwareAddr
+	for _, mac := range options.IncludeMACAddress {
+		addr, err := net.ParseMAC(mac)
+		if err != nil {
+			return nil, E.Cause(err, "parse include_mac_address")
+		}
+		includeMACAddress = append(includeMACAddress, addr)
+	}
+	var excludeMACAddress []net.HardwareAddr
+	for _, mac := range options.ExcludeMACAddress {
+		addr, err := net.ParseMAC(mac)
+		if err != nil {
+			return nil, E.Cause(err, "parse exclude_mac_address")
+		}
+		excludeMACAddress = append(excludeMACAddress, addr)
 	}
 
 	var dnsAdds []netip.AddrPort
@@ -349,36 +379,39 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 	}
 
 	tunOptions := tun.Options{
-		Name:                     tunName,
-		MTU:                      tunMTU,
-		GSO:                      options.GSO,
-		Inet4Address:             options.Inet4Address,
-		Inet6Address:             options.Inet6Address,
-		AutoRoute:                options.AutoRoute,
-		IPRoute2TableIndex:       tableIndex,
-		IPRoute2RuleIndex:        ruleIndex,
-		AutoRedirectInputMark:    inputMark,
-		AutoRedirectOutputMark:   outputMark,
-		Inet4LoopbackAddress:     common.Filter(options.LoopbackAddress, netip.Addr.Is4),
-		Inet6LoopbackAddress:     common.Filter(options.LoopbackAddress, netip.Addr.Is6),
-		StrictRoute:              options.StrictRoute,
-		Inet4RouteAddress:        inet4RouteAddress,
-		Inet6RouteAddress:        inet6RouteAddress,
-		Inet4RouteExcludeAddress: inet4RouteExcludeAddress,
-		Inet6RouteExcludeAddress: inet6RouteExcludeAddress,
-		IncludeInterface:         options.IncludeInterface,
-		ExcludeInterface:         options.ExcludeInterface,
-		IncludeUID:               includeUID,
-		ExcludeUID:               excludeUID,
-		ExcludeSrcPort:           excludeSrcPort,
-		ExcludeDstPort:           excludeDstPort,
-		IncludeAndroidUser:       options.IncludeAndroidUser,
-		IncludePackage:           options.IncludePackage,
-		ExcludePackage:           options.ExcludePackage,
-		FileDescriptor:           options.FileDescriptor,
-		InterfaceMonitor:         defaultInterfaceMonitor,
-		EXP_RecvMsgX:             options.RecvMsgX,
-		EXP_SendMsgX:             options.SendMsgX,
+		Name:                                  tunName,
+		MTU:                                   tunMTU,
+		GSO:                                   options.GSO,
+		Inet4Address:                          options.Inet4Address,
+		Inet6Address:                          options.Inet6Address,
+		AutoRoute:                             options.AutoRoute,
+		IPRoute2TableIndex:                    tableIndex,
+		IPRoute2RuleIndex:                     ruleIndex,
+		IPRoute2AutoRedirectFallbackRuleIndex: autoRedirectFallbackRuleIndex,
+		AutoRedirectInputMark:                 inputMark,
+		AutoRedirectOutputMark:                outputMark,
+		Inet4LoopbackAddress:                  common.Filter(options.LoopbackAddress, netip.Addr.Is4),
+		Inet6LoopbackAddress:                  common.Filter(options.LoopbackAddress, netip.Addr.Is6),
+		StrictRoute:                           options.StrictRoute,
+		Inet4RouteAddress:                     inet4RouteAddress,
+		Inet6RouteAddress:                     inet6RouteAddress,
+		Inet4RouteExcludeAddress:              inet4RouteExcludeAddress,
+		Inet6RouteExcludeAddress:              inet6RouteExcludeAddress,
+		IncludeInterface:                      options.IncludeInterface,
+		ExcludeInterface:                      options.ExcludeInterface,
+		IncludeUID:                            includeUID,
+		ExcludeUID:                            excludeUID,
+		ExcludeSrcPort:                        excludeSrcPort,
+		ExcludeDstPort:                        excludeDstPort,
+		IncludeAndroidUser:                    options.IncludeAndroidUser,
+		IncludePackage:                        options.IncludePackage,
+		ExcludePackage:                        options.ExcludePackage,
+		IncludeMACAddress:                     includeMACAddress,
+		ExcludeMACAddress:                     excludeMACAddress,
+		FileDescriptor:                        options.FileDescriptor,
+		InterfaceMonitor:                      defaultInterfaceMonitor,
+		EXP_RecvMsgX:                          options.RecvMsgX,
+		EXP_SendMsgX:                          options.SendMsgX,
 	}
 
 	if options.AutoRedirect {
@@ -448,15 +481,9 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		UDPTimeout:             udpTimeout,
 		Handler:                handler,
 		Logger:                 log.SingLogger,
+		ForwarderBindInterface: forwarderBindInterface,
 		InterfaceFinder:        interfaceFinder,
 		EnforceBindInterface:   EnforceBindInterface,
-	}
-
-	if options.FileDescriptor > 0 {
-		if tunName, err := getTunnelName(int32(options.FileDescriptor)); err != nil {
-			stackOptions.TunOptions.Name = tunName
-			stackOptions.ForwarderBindInterface = true
-		}
 	}
 	l.tunIf = tunIf
 
@@ -493,8 +520,6 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 			l.ruleUpdateCallbackCloser = rpTunnel.RuleUpdateCallback().Register(l.ruleUpdateCallback)
 		}
 	}
-
-	//l.openAndroidHotspot(tunOptions)
 
 	if !l.options.AutoDetectInterface {
 		resolver.ResetConnection()
