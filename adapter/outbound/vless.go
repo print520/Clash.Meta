@@ -16,6 +16,7 @@ import (
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/gun"
+	"github.com/metacubex/mihomo/transport/tuic/common"
 	"github.com/metacubex/mihomo/transport/vless"
 	"github.com/metacubex/mihomo/transport/vless/encryption"
 	"github.com/metacubex/mihomo/transport/vmess"
@@ -78,15 +79,29 @@ type VlessOption struct {
 }
 
 type XHTTPOptions struct {
-	Path               string                 `proxy:"path,omitempty"`
-	Host               string                 `proxy:"host,omitempty"`
-	Mode               string                 `proxy:"mode,omitempty"`
-	Headers            map[string]string      `proxy:"headers,omitempty"`
-	NoGRPCHeader       bool                   `proxy:"no-grpc-header,omitempty"`
-	XPaddingBytes      string                 `proxy:"x-padding-bytes,omitempty"`
-	ScMaxEachPostBytes string                 `proxy:"sc-max-each-post-bytes,omitempty"`
-	ReuseSettings      *XHTTPReuseSettings    `proxy:"reuse-settings,omitempty"` // aka XMUX
-	DownloadSettings   *XHTTPDownloadSettings `proxy:"download-settings,omitempty"`
+	Path                 string                 `proxy:"path,omitempty"`
+	Host                 string                 `proxy:"host,omitempty"`
+	Mode                 string                 `proxy:"mode,omitempty"`
+	Headers              map[string]string      `proxy:"headers,omitempty"`
+	NoGRPCHeader         bool                   `proxy:"no-grpc-header,omitempty"`
+	XPaddingBytes        string                 `proxy:"x-padding-bytes,omitempty"`
+	XPaddingObfsMode     bool                   `proxy:"x-padding-obfs-mode,omitempty"`
+	XPaddingKey          string                 `proxy:"x-padding-key,omitempty"`
+	XPaddingHeader       string                 `proxy:"x-padding-header,omitempty"`
+	XPaddingPlacement    string                 `proxy:"x-padding-placement,omitempty"`
+	XPaddingMethod       string                 `proxy:"x-padding-method,omitempty"`
+	UplinkHTTPMethod     string                 `proxy:"uplink-http-method,omitempty"`
+	SessionPlacement     string                 `proxy:"session-placement,omitempty"`
+	SessionKey           string                 `proxy:"session-key,omitempty"`
+	SeqPlacement         string                 `proxy:"seq-placement,omitempty"`
+	SeqKey               string                 `proxy:"seq-key,omitempty"`
+	UplinkDataPlacement  string                 `proxy:"uplink-data-placement,omitempty"`
+	UplinkDataKey        string                 `proxy:"uplink-data-key,omitempty"`
+	UplinkChunkSize      string                 `proxy:"uplink-chunk-size,omitempty"`
+	ScMaxEachPostBytes   string                 `proxy:"sc-max-each-post-bytes,omitempty"`
+	ScMinPostsIntervalMs string                 `proxy:"sc-min-posts-interval-ms,omitempty"`
+	ReuseSettings        *XHTTPReuseSettings    `proxy:"reuse-settings,omitempty"` // aka XMUX
+	DownloadSettings     *XHTTPDownloadSettings `proxy:"download-settings,omitempty"`
 }
 
 type XHTTPReuseSettings struct {
@@ -100,13 +115,10 @@ type XHTTPReuseSettings struct {
 
 type XHTTPDownloadSettings struct {
 	// xhttp part
-	Path               *string             `proxy:"path,omitempty"`
-	Host               *string             `proxy:"host,omitempty"`
-	Headers            *map[string]string  `proxy:"headers,omitempty"`
-	NoGRPCHeader       *bool               `proxy:"no-grpc-header,omitempty"`
-	XPaddingBytes      *string             `proxy:"x-padding-bytes,omitempty"`
-	ScMaxEachPostBytes *string             `proxy:"sc-max-each-post-bytes,omitempty"`
-	ReuseSettings      *XHTTPReuseSettings `proxy:"reuse-settings,omitempty"` // aka XMUX
+	Path          *string             `proxy:"path,omitempty"`
+	Host          *string             `proxy:"host,omitempty"`
+	Headers       *map[string]string  `proxy:"headers,omitempty"`
+	ReuseSettings *XHTTPReuseSettings `proxy:"reuse-settings,omitempty"` // aka XMUX
 	// proxy part
 	Server            *string         `proxy:"server,omitempty"`
 	Port              *int            `proxy:"port,omitempty"`
@@ -287,7 +299,7 @@ func (v *Vless) dialContext(ctx context.Context) (c net.Conn, err error) {
 	case "grpc": // gun transport
 		return v.gunClient.Dial()
 	case "xhttp":
-		return v.xhttpClient.Dial()
+		return v.xhttpClient.Dial(ctx)
 	default:
 	}
 	return v.dialer.DialContext(ctx, "tcp", v.addr)
@@ -435,19 +447,19 @@ func NewVless(option VlessOption) (*Vless, error) {
 	}
 
 	v := &Vless{
-		Base: &Base{
-			name:   option.Name,
-			addr:   net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
-			tp:     C.Vless,
-			pdName: option.ProviderName,
-			udp:    option.UDP,
-			xudp:   option.XUDP,
-			tfo:    option.TFO,
-			mpTcp:  option.MPTCP,
-			iface:  option.Interface,
-			rmark:  option.RoutingMark,
-			prefer: option.IPVersion,
-		},
+		Base: NewBase(BaseOption{
+			Name:         option.Name,
+			Addr:         net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
+			Type:         C.Vless,
+			ProviderName: option.ProviderName,
+			UDP:          option.UDP,
+			XUDP:         option.XUDP,
+			TFO:          option.TFO,
+			MPTCP:        option.MPTCP,
+			Interface:    option.Interface,
+			RoutingMark:  option.RoutingMark,
+			Prefer:       option.IPVersion,
+		}),
 		client: client,
 		option: &option,
 	}
@@ -543,14 +555,28 @@ func NewVless(option VlessOption) (*Vless, error) {
 		}
 
 		cfg := &xhttp.Config{
-			Host:               requestHost,
-			Path:               v.option.XHTTPOpts.Path,
-			Mode:               v.option.XHTTPOpts.Mode,
-			Headers:            v.option.XHTTPOpts.Headers,
-			NoGRPCHeader:       v.option.XHTTPOpts.NoGRPCHeader,
-			XPaddingBytes:      v.option.XHTTPOpts.XPaddingBytes,
-			ScMaxEachPostBytes: v.option.XHTTPOpts.ScMaxEachPostBytes,
-			ReuseConfig:        reuseCfg,
+			Host:                 requestHost,
+			Path:                 v.option.XHTTPOpts.Path,
+			Mode:                 v.option.XHTTPOpts.Mode,
+			Headers:              v.option.XHTTPOpts.Headers,
+			NoGRPCHeader:         v.option.XHTTPOpts.NoGRPCHeader,
+			XPaddingBytes:        v.option.XHTTPOpts.XPaddingBytes,
+			XPaddingObfsMode:     v.option.XHTTPOpts.XPaddingObfsMode,
+			XPaddingKey:          v.option.XHTTPOpts.XPaddingKey,
+			XPaddingHeader:       v.option.XHTTPOpts.XPaddingHeader,
+			XPaddingPlacement:    v.option.XHTTPOpts.XPaddingPlacement,
+			XPaddingMethod:       v.option.XHTTPOpts.XPaddingMethod,
+			UplinkHTTPMethod:     v.option.XHTTPOpts.UplinkHTTPMethod,
+			SessionPlacement:     v.option.XHTTPOpts.SessionPlacement,
+			SessionKey:           v.option.XHTTPOpts.SessionKey,
+			SeqPlacement:         v.option.XHTTPOpts.SeqPlacement,
+			SeqKey:               v.option.XHTTPOpts.SeqKey,
+			UplinkDataPlacement:  v.option.XHTTPOpts.UplinkDataPlacement,
+			UplinkDataKey:        v.option.XHTTPOpts.UplinkDataKey,
+			UplinkChunkSize:      v.option.XHTTPOpts.UplinkChunkSize,
+			ScMaxEachPostBytes:   v.option.XHTTPOpts.ScMaxEachPostBytes,
+			ScMinPostsIntervalMs: v.option.XHTTPOpts.ScMinPostsIntervalMs,
+			ReuseConfig:          reuseCfg,
 		}
 
 		makeTransport := func() http.RoundTripper {
@@ -588,21 +614,12 @@ func NewVless(option VlessOption) (*Vless, error) {
 						return nil, err
 					}
 
-					udpAddr, err := resolveUDPAddr(ctx, "udp", v.addr, v.prefer)
-					if err != nil {
-						return nil, err
-					}
 					err = v.echConfig.ClientHandle(ctx, tlsConfig)
 					if err != nil {
 						return nil, err
 					}
-					packetConn, err := v.dialer.ListenPacket(ctx, "udp", "", udpAddr.AddrPort())
+					_, quicConn, err := common.DialQuic(ctx, v.addr, v.DialOptions(), v.dialer, tlsConfig, cfg, true)
 					if err != nil {
-						return nil, err
-					}
-					quicConn, err := quic.DialEarly(ctx, packetConn, udpAddr, tlsConfig, cfg)
-					if err != nil {
-						_ = packetConn.Close()
 						return nil, err
 					}
 					return quicConn, nil
@@ -656,9 +673,13 @@ func NewVless(option VlessOption) (*Vless, error) {
 
 			downloadHKeepAlivePeriod := hKeepAlivePeriod
 
-			downloadReuseCfg := reuseCfg
+			downloadCfg := *cfg // make a copy
+			downloadCfg.Host = downloadHost
+			downloadCfg.Path = lo.FromPtrOr(ds.Path, v.option.XHTTPOpts.Path)
+			downloadCfg.Headers = lo.FromPtrOr(ds.Headers, v.option.XHTTPOpts.Headers)
+
 			if ds.ReuseSettings != nil {
-				downloadReuseCfg = &xhttp.ReuseConfig{
+				downloadCfg.ReuseConfig = &xhttp.ReuseConfig{
 					MaxConcurrency:   ds.ReuseSettings.MaxConcurrency,
 					MaxConnections:   ds.ReuseSettings.MaxConnections,
 					CMaxReuseTimes:   ds.ReuseSettings.CMaxReuseTimes,
@@ -668,16 +689,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 				downloadHKeepAlivePeriod = time.Duration(ds.ReuseSettings.HKeepAlivePeriod) * time.Second
 			}
 
-			cfg.DownloadConfig = &xhttp.Config{
-				Host:               downloadHost,
-				Path:               lo.FromPtrOr(ds.Path, v.option.XHTTPOpts.Path),
-				Mode:               v.option.XHTTPOpts.Mode,
-				Headers:            lo.FromPtrOr(ds.Headers, v.option.XHTTPOpts.Headers),
-				NoGRPCHeader:       lo.FromPtrOr(ds.NoGRPCHeader, v.option.XHTTPOpts.NoGRPCHeader),
-				XPaddingBytes:      lo.FromPtrOr(ds.XPaddingBytes, v.option.XHTTPOpts.XPaddingBytes),
-				ScMaxEachPostBytes: lo.FromPtrOr(ds.ScMaxEachPostBytes, v.option.XHTTPOpts.ScMaxEachPostBytes),
-				ReuseConfig:        downloadReuseCfg,
-			}
+			cfg.DownloadConfig = &downloadCfg
 
 			makeDownloadTransport = func() http.RoundTripper {
 				return xhttp.NewTransport(
@@ -740,21 +752,12 @@ func NewVless(option VlessOption) (*Vless, error) {
 							return nil, err
 						}
 
-						udpAddr, err := resolveUDPAddr(ctx, "udp", downloadAddr, v.prefer)
-						if err != nil {
-							return nil, err
-						}
 						err = downloadEchConfig.ClientHandle(ctx, tlsConfig)
 						if err != nil {
 							return nil, err
 						}
-						packetConn, err := v.dialer.ListenPacket(ctx, "udp", "", udpAddr.AddrPort())
+						_, quicConn, err := common.DialQuic(ctx, downloadAddr, v.DialOptions(), v.dialer, tlsConfig, cfg, true)
 						if err != nil {
-							return nil, err
-						}
-						quicConn, err := quic.DialEarly(ctx, packetConn, udpAddr, tlsConfig, cfg)
-						if err != nil {
-							_ = packetConn.Close()
 							return nil, err
 						}
 						return quicConn, nil
