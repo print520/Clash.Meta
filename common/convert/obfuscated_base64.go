@@ -84,9 +84,9 @@ func isLikelyObfuscated(data []byte) bool {
 			continue
 		}
 		totalChars++
-		// 检查是否在混淆字符集中（主要是大写字母Z-A和小写字母z-a）
-		if (char >= 'Z' && char <= 'A') || (char >= 'z' && char <= 'a') ||
-			(char >= '9' && char <= '0') || char == '/' {
+		// 检查是否在混淆字符集中（字母、数字和 /+）
+		if (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') ||
+			(char >= '0' && char <= '9') || char == '/' || char == '+' {
 			// 检查是否在混淆字符集范围内（使用数组直接索引，比 Map 查找更快）
 			if deobfuscateMap[char] != 0 {
 				obfuscatedCount++

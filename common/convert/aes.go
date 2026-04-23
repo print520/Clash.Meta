@@ -70,9 +70,14 @@ func DecodeAESBase64(buf []byte) []byte {
 	// 第四步：AES解密成功后，再进行base64解密得到最终的YAML内容
 	finalResult := DecodeBase64(aesDecrypted)
 
-	// 如果最终结果为空或太小，返回AES解密的直接结果
+	// 如果最终结果为空或太小，走兼容回退：
+	// 1) 若AES解密结果本身就是有效配置（历史兼容），返回它
+	// 2) 否则返回原始输入，让上层继续尝试其他解码方式，避免误判随机字节
 	if len(finalResult) < 10 {
-		return aesDecrypted
+		if isValidConfig(aesDecrypted) {
+			return aesDecrypted
+		}
+		return buf
 	}
 
 	return finalResult

@@ -19,7 +19,7 @@ func DecryptConfig(buf []byte) []byte {
 
 	// 尝试方式1: AES-128-CBC + Base64 解密（PHP openssl_encrypt方式）
 	aesResult := DecodeAESBase64(buf)
-	if isValidConfig(aesResult) {
+	if isValidConfig(aesResult) && !bytes.Equal(aesResult, buf) {
 		return aesResult
 	}
 
