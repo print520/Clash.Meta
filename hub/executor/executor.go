@@ -57,7 +57,8 @@ func readConfig(path string) ([]byte, error) {
 		return nil, fmt.Errorf("configuration file %s is empty", path)
 	}
 
-	return data, err
+	// 调整
+	return data, nil
 }
 
 // Parse config with default config path
@@ -104,8 +105,8 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	updateGeneral(cfg.General, true)
 	updateNTP(cfg.NTP)
 	updateDNS(cfg.DNS, cfg.General.IPv6)
-	updateListeners(cfg.General, cfg.Listeners, force)
-	updateTun(cfg.General) // tun should not care "force"
+	//updateListeners(cfg.General, cfg.Listeners, force)
+	//updateTun(cfg.General) // tun should not care "force"
 	updateIPTables(cfg)
 	updateTunnels(cfg.Tunnels)
 
@@ -328,12 +329,16 @@ func loadProvider[T P.Provider](providers map[string]T) {
 			switch pv.Type() {
 			case P.Proxy:
 				{
-					log.Errorln("initial proxy provider %s error: %v", name, err)
+					log.Warnln("initial proxy provider %s error: %v", name, err)
 				}
 			case P.Rule:
 				{
-					log.Errorln("initial rule provider %s error: %v", name, err)
+					log.Warnln("initial rule provider %s error: %v", name, err)
 				}
+			}
+		} else {
+			if DefaultProviderLoadedHook != nil {
+				DefaultProviderLoadedHook(name)
 			}
 		}
 	}
@@ -349,7 +354,6 @@ func loadProvider[T P.Provider](providers map[string]T) {
 			load(pv)
 		}()
 	}
-	wg.Wait()
 }
 
 func updateSniffer(snifferConfig *sniffer.Config) {

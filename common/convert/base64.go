@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"strings"
@@ -22,6 +23,10 @@ func DecodeBase64(buf []byte) []byte {
 }
 
 func tryDecodeBase64(buf []byte) ([]byte, error) {
+	buf = bytes.TrimSpace(buf)
+	if len(buf) == 0 {
+		return nil, fmt.Errorf("empty base64 input")
+	}
 	dBuf := make([]byte, encRaw.DecodedLen(len(buf)))
 	n, err := encRaw.Decode(dBuf, buf)
 	if err != nil {
