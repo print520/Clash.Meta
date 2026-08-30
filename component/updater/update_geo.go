@@ -232,7 +232,7 @@ func UpdateGeoDatabases() error {
 	return nil
 }
 
-func getUpdateTime() (time time.Time, err error) {
+func getUpdateTime() (time.Time, error) {
 	filesToCheck := []string{
 		C.Path.GeoIP(),
 		C.Path.MMDB(),
@@ -240,15 +240,28 @@ func getUpdateTime() (time time.Time, err error) {
 		C.Path.GeoSite(),
 	}
 
+	var newest time.Time
+	found := false
+	var lastErr error
 	for _, file := range filesToCheck {
-		var fileInfo os.FileInfo
-		fileInfo, err = os.Stat(file)
-		if err == nil {
-			return fileInfo.ModTime(), nil
+		fileInfo, err := os.Stat(file)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		mt := fileInfo.ModTime()
+		if !found || mt.After(newest) {
+			newest = mt
+			found = true
 		}
 	}
-
-	return
+	if !found {
+		if lastErr == nil {
+			lastErr = os.ErrNotExist
+		}
+		return time.Time{}, lastErr
+	}
+	return newest, nil
 }
 
 func RegisterGeoUpdater() {
