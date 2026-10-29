@@ -60,6 +60,7 @@ func UpdateMMDB() (err error) {
 	}
 	if oldHash.Equal(hash) { // same hash, ignored
 		skipped = true
+		_ = os.Chtimes(vehicle.Path(), time.Now(), time.Now())
 		return nil
 	}
 	if len(data) == 0 {
@@ -96,6 +97,7 @@ func UpdateASN() (err error) {
 	}
 	if oldHash.Equal(hash) { // same hash, ignored
 		skipped = true
+		_ = os.Chtimes(vehicle.Path(), time.Now(), time.Now())
 		return nil
 	}
 	if len(data) == 0 {
@@ -134,6 +136,7 @@ func UpdateGeoIp() (err error) {
 	}
 	if oldHash.Equal(hash) { // same hash, ignored
 		skipped = true
+		_ = os.Chtimes(vehicle.Path(), time.Now(), time.Now())
 		return nil
 	}
 	if len(data) == 0 {
@@ -169,6 +172,7 @@ func UpdateGeoSite() (err error) {
 	}
 	if oldHash.Equal(hash) { // same hash, ignored
 		skipped = true
+		_ = os.Chtimes(vehicle.Path(), time.Now(), time.Now())
 		return nil
 	}
 	if len(data) == 0 {

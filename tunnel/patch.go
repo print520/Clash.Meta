@@ -5,7 +5,15 @@ import (
 
 	C "github.com/metacubex/mihomo/constant"
 	P "github.com/metacubex/mihomo/constant/provider"
+	"github.com/metacubex/mihomo/tunnel/statistic"
 )
+
+func init() {
+	statistic.IsDirect = func(name string) bool {
+		proxy, ok := AllProxies()[name]
+		return ok && proxy.Type() == C.Direct
+	}
+}
 
 var (
 	allProxiesMu sync.Mutex
@@ -101,4 +109,15 @@ func RuleProvidersSnapshot() map[string]P.RuleProvider {
 	configMux.RLock()
 	defer configMux.RUnlock()
 	return ruleProviders
+}
+
+// ResolveRoute picks the adapter a connection for metadata would be handed
+// to, by the same steps an incoming connection takes, without dialing it.
+func ResolveRoute(metadata *C.Metadata) (C.Proxy, error) {
+	fixMetadata(metadata)
+	if err := preHandleMetadata(metadata); err != nil {
+		return nil, err
+	}
+	proxy, _, err := resolveMetadata(metadata)
+	return proxy, err
 }
